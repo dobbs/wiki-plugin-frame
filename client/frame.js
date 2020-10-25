@@ -39,7 +39,7 @@
         break
       }
     }
-    result.sandbox = 'allow-scripts'
+    result.sandbox = 'allow-scripts allow-downloads'
     result.caption = caption
     result.height = height
     return result
