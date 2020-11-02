@@ -44,11 +44,29 @@
     return result
   }
 
+  function advertiseMessages(frame) {
+    return event => {
+      frame.contentWindow.postMessage({
+        wiki: {
+          identifiers: {
+            pagekey: frame.dataset.pagekey,
+            frameid: frame.dataset.frameid
+          },
+          accepts: ['showResult', 'doInternalLink', 'importer', 'resize']
+        }
+      }, '*')
+      console.log('greeted the frame.contentWindow')
+    }
+  }
+
   function drawFrame($item, item, parsed) {
     $item.append('<iframe></iframe><p></p>')
     const $page = $item.parents('.page')
+    const frame = $item.find('iframe').get(0)
+    frame.dataset.pagekey = $page.data('key')
+    frame.dataset.frameid = frameId()
+    frame.addEventListener('load', advertiseMessages(frame))
     $item.find('iframe').attr({
-      name: $page.data('key'),
       width: '100%',
       style: 'border: none;',
       src: parsed.src,
@@ -57,8 +75,24 @@
     if (parsed.height) {
       $item.find('iframe')
         .attr('height', parsed.height)
+    } else {
+      frame.addEventListener('load', event => resize(frame))
     }
     $item.find('p').html(expand(parsed.caption))
+  }
+
+  function resize(frame) {
+    try {
+      frame.style.height = `${frame.contentWindow.document.body.scrollHeight}px`
+    } catch (err) {
+      if ((err instanceof DOMException) && /cross-origin/.test(err.message)) {
+        console.error('wiki frame resize does not work for cross-origin content', err)
+      }
+    }
+  }
+
+  function frameId() {
+    return Math.floor(Math.random()*1e18).toString(16)
   }
 
   function drawError($item, item, parsed) {
@@ -105,11 +139,11 @@
 
   function frameListener(event) {
     const {data} = event;
-    const {action, keepLineup=false, pageKey=null, page=null, pages={}, title=null} = data;
+    const {action, keepLineup=false, frameid=null, pagekey=null, page=null, pages={}, title=null} = data.wiki;
     let options
 
     const $page = $('.page').filter(function() {
-      return $(this).data('key') === pageKey
+      return $(this).data('key') === pagekey
     });
 
     switch (action) {
@@ -127,6 +161,14 @@
     case "importer":
       options = keepLineup ? {} : {$page}
       showImporter(pages, options)
+      break
+    case "resize":
+      const frame = $page.find(`iframe[data-frameid="${frameid}"]`).get(0)
+      if (frame) {
+        resize(frame)
+      } else {
+        console.error('wiki frame resize could not find frameid for pagekey', {frameid, pagekey})
+      }
       break
     default:
       console.error({where:'frameListener', message: "unknown action", data})
